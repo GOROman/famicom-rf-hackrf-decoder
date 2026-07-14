@@ -74,6 +74,7 @@ platform-specific dependencies beyond libhackrf and SDL2.
 | `--mode color\|gray` | color / grayscale (default color) |
 | `--detector envelope\|sync` | envelope / carrier-PLL synchronous detection |
 | `--sat F` / `--hue DEG` | saturation / hue trim |
+| `--overscan F` | horizontal crop per side, 0..0.15 (default 0.047 ~ the NES 256-px picture) |
 | `--no-audio` / `--volume F` | disable FM audio / volume 0..1 (default 0.7) |
 | `--record PATH` | tee raw IQ to .cs8 while decoding |
 | `--dump-frames PREFIX` / `--frames N` | headless PPM frame dump |
@@ -83,11 +84,17 @@ platform-specific dependencies beyond libhackrf and SDL2.
 ### Keys / on-screen display
 
 - `q` / ESC: quit, `l` / `L`: LNA ±8 dB, `g` / `G`: VGA ±2 dB,
-  `c`: color/gray toggle, `s`: screenshot (BMP)
+  `c`: color/gray toggle, `s`: screenshot (BMP), `h`: help overlay
+- `←` / `→`: tune ±50 kHz, `↑` / `↓`: tune ±1 MHz (live retuning)
+- `r`: CRT emulation (barrel distortion + scanlines + vignette)
 - **Top left (big green)**: retro-TV style channel number (`CH1`)
-- **Top right (yellow)**: `V-SYNC:OK H-SYNC:OK` and
-  `VHF:90.83MHz AUD:95.33MHz` — sync lock states, video and audio carriers
-- While unlocked the display free-runs and shows **snow**, like a real TV
+- **Top right (yellow)**: sync lock states and decoded FPS
+  (`V-SYNC:OK H-SYNC:OK 60.0FPS`), video/audio carriers
+  (`VHF:90.83MHz AUD:95.33MHz`), and measured latency
+  (`DELAY V:35ms A:88ms`)
+- While unlocked the display free-runs and shows **snow**, like a real TV;
+  when the vsync pulses are lost in noise, frames keep flowing on the
+  line-PLL flywheel
 
 ## How it works
 
