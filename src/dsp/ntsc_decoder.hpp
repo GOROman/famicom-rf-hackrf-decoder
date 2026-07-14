@@ -29,8 +29,11 @@ public:
         std::atomic<uint64_t> lines_coasted{0};
         std::atomic<float> line_period{0.0f};
         // Absolute input-sample index of the most recently published
-        // frame's vsync (for end-to-end latency estimation).
+        // frame's vsync, and total samples fed into the decoder — both in
+        // the same coordinate system (for latency estimation that stays
+        // correct across input drops).
         std::atomic<uint64_t> frame_sample_pos{0};
+        std::atomic<uint64_t> samples_in{0};
     };
 
     NtscDecoder(const Config& cfg, TripleBuffer& out);

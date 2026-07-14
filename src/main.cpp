@@ -43,6 +43,7 @@ void usage() {
         "  --mode color|gray     decode mode (default color)\n"
         "  --detector envelope|sync  AM detector (default envelope)\n"
         "  --sat F --hue DEG     color trims\n"
+        "  --overscan F          horizontal crop per side 0..0.15 (default 0.047)\n"
         "  --no-audio            disable FM audio output\n"
         "  --volume F            audio volume 0..1 (default 0.7)\n"
         "  --record PATH         tee raw IQ to .cs8 while decoding\n"
@@ -90,6 +91,7 @@ bool parse_args(int argc, char** argv, Config* cfg) {
                                           : Config::Detector::Envelope;
         } else if (a == "--no-audio") cfg->audio = false;
         else if (a == "--volume") cfg->volume = std::atof(next("--volume"));
+        else if (a == "--overscan") cfg->overscan = std::atof(next("--overscan"));
         else if (a == "--sat") cfg->saturation = std::atof(next("--sat"));
         else if (a == "--hue") cfg->hue_deg = std::atof(next("--hue"));
         else if (a == "--record") cfg->record_path = next("--record");
@@ -370,15 +372,18 @@ int main(int argc, char** argv) {
             st.fps = fps;
             st.show_help = show_help;
             st.crt = crt_mode;
-            // Video latency: samples captured since the displayed frame's
-            // vsync, plus ~one USB transfer (13 ms) of hardware buffering.
+            // Video latency: decoder samples since the displayed frame's
+            // vsync (same coordinate system, so input drops don't skew it),
+            // plus the source's unread backlog and ~one USB transfer (13 ms).
             if (st.vsync_locked) {
-                uint64_t rx_samples = src->total_bytes() / 2;
+                uint64_t dsp_samples = dec.stats().samples_in.load();
                 uint64_t vsync_pos = dec.stats().frame_sample_pos.load();
-                if (rx_samples > vsync_pos)
+                if (dsp_samples > vsync_pos)
                     st.video_latency_ms = static_cast<float>(
-                        static_cast<double>(rx_samples - vsync_pos) /
-                        cfg.sample_rate * 1000.0 + 13.0);
+                        (static_cast<double>(dsp_samples - vsync_pos) +
+                         static_cast<double>(src->buffered_bytes()) / 2.0) /
+                            cfg.sample_rate * 1000.0 +
+                        13.0);
             }
             st.audio_latency_ms = aout.ok() ? aout.queued_ms() : 0.0f;
             st.freq_mhz = cfg.video_carrier_hz / 1e6;

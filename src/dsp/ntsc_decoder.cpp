@@ -66,6 +66,8 @@ void NtscDecoder::process(const float* raw, size_t n) {
     chromab_.resize(old + n);
     chroma_bpf_.process(comp_.data() + old, chromab_.data() + old, n);
 
+    stats_.samples_in.store(static_cast<uint64_t>(comp_end()),
+                            std::memory_order_relaxed);
     if (agc_.seeded()) decode_lines();
     trim_buffers();
 }
@@ -208,6 +210,20 @@ void NtscDecoder::handle_line(double edge, bool edge_measured) {
         line_no_ = 0;
     } else {
         ++line_no_;
+        // Free-wheeling vertical sync: if noise made us miss the vsync
+        // pulses, publish on the flywheel at the nominal field length so
+        // frames keep flowing (a real TV does the same). Only while the
+        // line PLL is solidly locked — otherwise a fake noise-lock would
+        // publish black frames instead of falling back to snow.
+        if (line_no_ >= 262) {
+            if (pll_.locked) {
+                tb_.publish(++frame_seq_);
+                stats_.frames.fetch_add(1, std::memory_order_relaxed);
+                stats_.frame_sample_pos.store(static_cast<uint64_t>(e),
+                                              std::memory_order_relaxed);
+            }
+            line_no_ -= 262;
+        }
     }
     vsync_run_ = 0;
 
@@ -246,8 +262,12 @@ void NtscDecoder::decode_row(double edge) {
     uint32_t* out0 = f.rgba.data() + static_cast<size_t>(row) * Frame::kWidth;
     uint32_t* out1 = out0 + Frame::kWidth;
 
-    const double active_start = edge + 9.4 * samples_per_us_;
-    const double active_span = 52.6 * samples_per_us_;
+    const double full_start = edge + 9.4 * samples_per_us_;
+    const double full_span = 52.6 * samples_per_us_;
+    // TV-style overscan: display only the central part of the active line.
+    const double crop = full_span * cfg_.overscan;
+    const double active_start = full_start + crop;
+    const double active_span = full_span - 2.0 * crop;
     const double step = active_span / Frame::kWidth;
     const bool color = cfg_.mode == Config::Mode::Color;
 

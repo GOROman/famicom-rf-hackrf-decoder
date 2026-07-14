@@ -35,6 +35,10 @@ struct Config {
     float saturation = 1.0f;
     float hue_deg = 0.0f;
 
+    // Horizontal overscan crop, fraction of the active line removed from
+    // EACH side. Real TVs hide the edges; 0.047 ~ the NES 256-px picture.
+    float overscan = 0.047f;
+
     // FM intercarrier audio (video +4.5 MHz)
     bool audio = true;
     float volume = 0.7f;

@@ -20,6 +20,8 @@ public:
     // Total IQ bytes received from the hardware/file so far (for latency
     // estimation against decoded frame positions).
     virtual uint64_t total_bytes() const { return 0; }
+    // Bytes sitting in the source's internal buffer, not yet read.
+    virtual uint64_t buffered_bytes() const { return 0; }
     virtual uint64_t clipped_samples() const { return 0; }
     virtual float ring_fill() const { return 0.0f; }
 };

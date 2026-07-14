@@ -26,6 +26,7 @@ public:
     uint64_t total_bytes() const override {
         return total_.load(std::memory_order_relaxed);
     }
+    uint64_t buffered_bytes() const override { return ring_.readable(); }
     uint64_t clipped_samples() const override {
         return clipped_.load(std::memory_order_relaxed);
     }
