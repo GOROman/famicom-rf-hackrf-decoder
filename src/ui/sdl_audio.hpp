@@ -31,6 +31,12 @@ public:
 
     bool ok() const { return dev_ != 0; }
 
+    float queued_ms() const {
+        if (!dev_) return 0.0f;
+        return static_cast<float>(SDL_GetQueuedAudioSize(dev_)) /
+               sizeof(float) / static_cast<float>(rate_) * 1000.0f;
+    }
+
     void push(const float* data, size_t n) {
         if (!dev_ || n == 0) return;
         // Keep queued audio near ~100 ms: startup bursts (DSP catching up on

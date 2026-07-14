@@ -203,6 +203,8 @@ void NtscDecoder::handle_line(double edge, bool edge_measured) {
     if (vsync_run_ >= 2) {
         tb_.publish(++frame_seq_);
         stats_.frames.fetch_add(1, std::memory_order_relaxed);
+        stats_.frame_sample_pos.store(static_cast<uint64_t>(e),
+                                      std::memory_order_relaxed);
         line_no_ = 0;
     } else {
         ++line_no_;

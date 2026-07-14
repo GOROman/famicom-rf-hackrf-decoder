@@ -28,6 +28,9 @@ public:
         std::atomic<uint64_t> lines{0};
         std::atomic<uint64_t> lines_coasted{0};
         std::atomic<float> line_period{0.0f};
+        // Absolute input-sample index of the most recently published
+        // frame's vsync (for end-to-end latency estimation).
+        std::atomic<uint64_t> frame_sample_pos{0};
     };
 
     NtscDecoder(const Config& cfg, TripleBuffer& out);

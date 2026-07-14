@@ -126,6 +126,8 @@ KeyAction SdlDisplay::poll() {
                     return KeyAction::ToggleColor;
                 case SDLK_s:
                     return KeyAction::Screenshot;
+                case SDLK_h:
+                    return KeyAction::ToggleHelp;
                 default:
                     break;
             }
@@ -152,16 +154,47 @@ void SdlDisplay::render(const Frame* frame, const OsdStats& stats) {
     }
     // Status text, top right (yellow), two lines.
     char l1[48], l2[48];
-    std::snprintf(l1, sizeof(l1), "V-SYNC:%s H-SYNC:%s",
+    std::snprintf(l1, sizeof(l1), "V-SYNC:%s H-SYNC:%s %.1fFPS",
                   stats.vsync_locked ? "OK" : "--",
-                  stats.line_locked ? "OK" : "--");
+                  stats.line_locked ? "OK" : "--", stats.fps);
     std::snprintf(l2, sizeof(l2), "VHF:%.2fMHz AUD:%.2fMHz", stats.freq_mhz,
                   stats.audio_mhz);
-    std::string t1(l1), t2(l2);
+    char l3[48];
+    std::snprintf(l3, sizeof(l3), "DELAY V:%.0fms A:%.0fms",
+                  stats.video_latency_ms, stats.audio_latency_ms);
+    std::string t1(l1), t2(l2), t3(l3);
     draw_text(ren_, Frame::kWidth - static_cast<int>(t1.size()) * kCharW - 8,
               8, t1, 255, 220, 0);
     draw_text(ren_, Frame::kWidth - static_cast<int>(t2.size()) * kCharW - 8,
               8 + 8 * kFontScale, t2, 255, 220, 0);
+    draw_text(ren_, Frame::kWidth - static_cast<int>(t3.size()) * kCharW - 8,
+              8 + 16 * kFontScale, t3, 255, 220, 0);
+    if (stats.show_help) {
+        static const char* kHelp[] = {
+            "KEYS",
+            "Q ESC   QUIT",
+            "L       LNA GAIN UP",
+            "SHIFT L LNA GAIN DOWN",
+            "G       VGA GAIN UP",
+            "SHIFT G VGA GAIN DOWN",
+            "C       COLOR - GRAY",
+            "S       SCREENSHOT",
+            "H       HELP ON - OFF",
+        };
+        const int n = static_cast<int>(sizeof(kHelp) / sizeof(kHelp[0]));
+        int bw = 23 * kCharW + 32;
+        int bh = n * 9 * kFontScale + 32;
+        SDL_Rect box{(Frame::kWidth - bw) / 2, (Frame::kHeight - bh) / 2, bw,
+                     bh};
+        SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_BLEND);
+        SDL_SetRenderDrawColor(ren_, 0, 0, 0, 200);
+        SDL_RenderFillRect(ren_, &box);
+        SDL_SetRenderDrawBlendMode(ren_, SDL_BLENDMODE_NONE);
+        for (int i = 0; i < n; ++i)
+            draw_text(ren_, box.x + 16, box.y + 16 + i * 9 * kFontScale,
+                      kHelp[i], i == 0 ? 255 : 220, i == 0 ? 220 : 220,
+                      i == 0 ? 0 : 220);
+    }
     SDL_RenderPresent(ren_);
 }
 

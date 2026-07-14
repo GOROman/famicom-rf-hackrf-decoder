@@ -28,6 +28,7 @@ int HackRfSource::rx_callback(hackrf_transfer* transfer) {
         if (v >= 127 || v <= -127) ++clips;
     }
     if (clips) self->clipped_.fetch_add(clips, std::memory_order_relaxed);
+    self->total_.fetch_add(len, std::memory_order_relaxed);
     if (!self->ring_.push(data, len))
         self->dropped_.fetch_add(len, std::memory_order_relaxed);
     return 0;

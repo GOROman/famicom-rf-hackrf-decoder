@@ -296,6 +296,10 @@ int main(int argc, char** argv) {
         bool have_shown = false;
         uint64_t prev_frames = 0;
         auto last_frame_inc = std::chrono::steady_clock::now();
+        bool show_help = false;
+        float fps = 0.0f;
+        uint64_t fps_base_frames = 0;
+        auto fps_base_time = std::chrono::steady_clock::now();
         // Nearest VHF channel (real modulators drift a few hundred kHz).
         int channel = 0;
         if (std::abs(cfg.video_carrier_hz - 91.25e6) < 3e6) channel = 1;
@@ -309,6 +313,7 @@ int main(int argc, char** argv) {
                 if (act == KeyAction::GainVgaUp) hackrf->set_gains(hackrf->lna(), hackrf->vga() + 2);
                 if (act == KeyAction::GainVgaDown) hackrf->set_gains(hackrf->lna(), hackrf->vga() - 2);
             }
+            if (act == KeyAction::ToggleHelp) show_help = !show_help;
             if (act == KeyAction::ToggleColor)
                 mcfg.mode = (mcfg.mode == Config::Mode::Color)
                                 ? Config::Mode::Gray
@@ -339,6 +344,27 @@ int main(int argc, char** argv) {
                 last_frame_inc = now;
             }
             st.vsync_locked = (now - last_frame_inc) < std::chrono::milliseconds(500);
+            // Decoded-frame rate over a rolling ~1 s window.
+            double win = std::chrono::duration<double>(now - fps_base_time).count();
+            if (win >= 1.0) {
+                fps = static_cast<float>(
+                    static_cast<double>(st.frames - fps_base_frames) / win);
+                fps_base_frames = st.frames;
+                fps_base_time = now;
+            }
+            st.fps = fps;
+            st.show_help = show_help;
+            // Video latency: samples captured since the displayed frame's
+            // vsync, plus ~one USB transfer (13 ms) of hardware buffering.
+            if (st.vsync_locked) {
+                uint64_t rx_samples = src->total_bytes() / 2;
+                uint64_t vsync_pos = dec.stats().frame_sample_pos.load();
+                if (rx_samples > vsync_pos)
+                    st.video_latency_ms = static_cast<float>(
+                        static_cast<double>(rx_samples - vsync_pos) /
+                        cfg.sample_rate * 1000.0 + 13.0);
+            }
+            st.audio_latency_ms = aout.ok() ? aout.queued_ms() : 0.0f;
             st.freq_mhz = cfg.video_carrier_hz / 1e6;
             st.audio_mhz = (cfg.video_carrier_hz + 4.5e6) / 1e6;
             st.channel = channel;

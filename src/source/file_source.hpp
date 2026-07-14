@@ -40,8 +40,8 @@ public:
             if (more == 0) break;
             got += more;
         }
+        total_bytes_ += got;
         if (pace_ && got > 0) {
-            total_bytes_ += got;
             double elapsed_target =
                 static_cast<double>(total_bytes_ / 2) / cfg_.sample_rate;
             auto target = start_time_ + std::chrono::duration_cast<
@@ -52,6 +52,9 @@ public:
         }
         return got;
     }
+
+public:
+    uint64_t total_bytes() const override { return total_bytes_; }
 
 private:
     const Config& cfg_;

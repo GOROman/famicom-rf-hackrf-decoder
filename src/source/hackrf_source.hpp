@@ -23,6 +23,9 @@ public:
     uint64_t dropped_bytes() const override {
         return dropped_.load(std::memory_order_relaxed);
     }
+    uint64_t total_bytes() const override {
+        return total_.load(std::memory_order_relaxed);
+    }
     uint64_t clipped_samples() const override {
         return clipped_.load(std::memory_order_relaxed);
     }
@@ -41,6 +44,7 @@ private:
     hackrf_device* dev_ = nullptr;
     SpscRing ring_;
     std::atomic<uint64_t> dropped_{0};
+    std::atomic<uint64_t> total_{0};
     std::atomic<uint64_t> clipped_{0};
     std::atomic<bool> running_{false};
     int lna_, vga_;

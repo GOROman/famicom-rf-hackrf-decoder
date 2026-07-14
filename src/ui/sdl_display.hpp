@@ -20,6 +20,10 @@ struct OsdStats {
     double freq_mhz = 0.0;      // video carrier
     double audio_mhz = 0.0;     // FM audio carrier (video +4.5 MHz)
     int channel = 0;            // 1/2 (nearest VHF channel), 0 = unknown
+    float fps = 0.0f;           // decoded frames per second
+    float video_latency_ms = 0.0f;  // capture -> displayed frame
+    float audio_latency_ms = 0.0f;  // queued audio
+    bool show_help = false;
 };
 
 // Key actions the main loop should react to.
@@ -32,6 +36,7 @@ enum class KeyAction {
     GainVgaDown,
     ToggleColor,
     Screenshot,
+    ToggleHelp,
 };
 
 class SdlDisplay {
