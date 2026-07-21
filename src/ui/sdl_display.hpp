@@ -27,6 +27,8 @@ struct OsdStats {
     bool crt = false;  // CRT (barrel + scanline + vignette) emulation
     bool recording = false;
     float rec_seconds = 0.0f;
+    bool show_hud = true;  // top-right status lines
+    bool radio = false;    // broadcast FM radio mode
 };
 
 // Key actions the main loop should react to.
@@ -46,6 +48,8 @@ enum class KeyAction {
     FreqDownBig, // down arrow: -1 MHz
     ToggleCrt,
     ToggleRecord,
+    ToggleHud,
+    ToggleRadio,
 };
 
 class SdlDisplay {

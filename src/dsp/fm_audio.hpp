@@ -44,20 +44,31 @@ private:
     std::vector<Sample> work_;
 };
 
-// TV intercarrier FM audio: carrier at video +4.5 MHz, deviation +-25 kHz,
-// 75 us de-emphasis. Input is the post-mixer IQ stream (video carrier at
-// 0 Hz); output is mono float audio at out_rate().
+// Mono FM demodulator over the post-mixer IQ stream. Two presets:
+//  - tv():  TV intercarrier audio at video +4.5 MHz, +-25 kHz deviation,
+//           75 us de-emphasis.
+//  - wfm(): broadcast FM at 0 Hz (station tuned to baseband), +-75 kHz
+//           deviation, 50 us de-emphasis (Japan).
 class FmAudioDemod {
 public:
-    FmAudioDemod(double fs, double volume)
-        : nco_(-4.5e6, fs),
-          stage1_(design_lowpass(130e3, fs, 331), 25),
+    FmAudioDemod(double fs, double volume, double carrier_offset_hz,
+                 double if_cutoff_hz, double deviation_hz, double deemph_tau)
+        : nco_(-carrier_offset_hz, fs),
+          stage1_(design_lowpass(if_cutoff_hz, fs, 331), 25),
           stage2_(design_lowpass(15e3, fs / 25.0, 65), 8),
           fs2_(fs / 25.0),
           volume_(static_cast<float>(volume)) {
-        deemph_a_ = 1.0f - std::exp(-1.0f / static_cast<float>(fs2_ * 75e-6));
+        deemph_a_ =
+            1.0f - std::exp(-1.0f / static_cast<float>(fs2_ * deemph_tau));
         dc_a_ = static_cast<float>(2.0 * M_PI * 20.0 / fs2_);
-        disc_gain_ = static_cast<float>(fs2_ / (2.0 * M_PI * 25e3));
+        disc_gain_ = static_cast<float>(fs2_ / (2.0 * M_PI * deviation_hz));
+    }
+
+    static FmAudioDemod tv(double fs, double volume) {
+        return FmAudioDemod(fs, volume, 4.5e6, 130e3, 25e3, 75e-6);
+    }
+    static FmAudioDemod wfm(double fs, double volume) {
+        return FmAudioDemod(fs, volume, 0.0, 110e3, 75e3, 50e-6);
     }
 
     double out_rate() const { return fs2_ / 8.0; }  // 50 kHz at 10 MSPS

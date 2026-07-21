@@ -43,6 +43,9 @@ struct Config {
     bool audio = true;
     float volume = 0.7f;
 
+    // Broadcast FM radio mode (F key): station frequency.
+    double fm_freq_hz = 80.0e6;  // TOKYO FM
+
     double center_hz() const { return video_carrier_hz + offset_hz; }
 };
 

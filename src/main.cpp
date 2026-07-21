@@ -45,6 +45,7 @@ void usage() {
         "  --detector envelope|sync  AM detector (default envelope)\n"
         "  --sat F --hue DEG     color trims\n"
         "  --overscan F          horizontal crop per side 0..0.15 (default 0.047)\n"
+        "  --fm-freq HZ          FM radio station for F key (default 80.0e6 TOKYO FM)\n"
         "  --no-audio            disable FM audio output\n"
         "  --volume F            audio volume 0..1 (default 0.7)\n"
         "  --record PATH         tee raw IQ to .cs8 while decoding\n"
@@ -92,6 +93,7 @@ bool parse_args(int argc, char** argv, Config* cfg) {
                                           : Config::Detector::Envelope;
         } else if (a == "--no-audio") cfg->audio = false;
         else if (a == "--volume") cfg->volume = std::atof(next("--volume"));
+        else if (a == "--fm-freq") cfg->fm_freq_hz = std::atof(next("--fm-freq"));
         else if (a == "--overscan") cfg->overscan = std::atof(next("--overscan"));
         else if (a == "--sat") cfg->saturation = std::atof(next("--sat"));
         else if (a == "--hue") cfg->hue_deg = std::atof(next("--hue"));
@@ -125,6 +127,7 @@ void write_ppm(const Frame& f, const std::string& path) {
 }
 
 std::atomic<bool> g_running{true};
+std::atomic<bool> g_radio{false};  // broadcast FM radio mode (F key)
 
 // IQ recorder shared between the DSP thread (writer) and the main loop
 // (start/stop via the V key or --record). Writes are 64 KiB blocks, so a
@@ -198,7 +201,8 @@ std::string next_recording_path() {
 // cs8 IQ bytes -> complex -> DC block -> mix carrier to 0 Hz -> channel LPF
 // -> AM detect -> NtscDecoder.
 void dsp_thread(const Config& cfg, ISampleSource* src, NtscDecoder* dec,
-                Recorder* rec, FmAudioDemod* fm, SdlAudioOut* aout) {
+                Recorder* rec, FmAudioDemod* fm_tv, FmAudioDemod* fm_radio,
+                SdlAudioOut* aout) {
     constexpr size_t kBlockBytes = 1 << 16;  // 32768 complex samples
     std::vector<uint8_t> raw(kBlockBytes);
     std::vector<std::complex<float>> iq(kBlockBytes / 2);
@@ -227,6 +231,8 @@ void dsp_thread(const Config& cfg, ISampleSource* src, NtscDecoder* dec,
                 static_cast<int8_t>(raw[2 * i + 1]) / 128.0f);
             iq[i] = dcb.process(c) * mixer.next();
         }
+        FmAudioDemod* fm =
+            g_radio.load(std::memory_order_relaxed) ? fm_radio : fm_tv;
         if (fm && aout) {
             static thread_local std::vector<float> audio;
             audio.clear();
@@ -310,19 +316,24 @@ int main(int argc, char** argv) {
     TripleBuffer tb;
     NtscDecoder dec(cfg, tb);
 
-    // FM intercarrier audio (window mode only).
-    std::unique_ptr<FmAudioDemod> fm;
+    // FM audio (window mode only): TV intercarrier + broadcast radio demods.
+    std::unique_ptr<FmAudioDemod> fm, fm_radio;
     SdlAudioOut aout;
     if (cfg.audio && !cfg.headless) {
-        auto demod = std::make_unique<FmAudioDemod>(cfg.sample_rate, cfg.volume);
-        if (aout.init(static_cast<int>(demod->out_rate())))
-            fm = std::move(demod);
-        else
+        auto tv = std::make_unique<FmAudioDemod>(
+            FmAudioDemod::tv(cfg.sample_rate, cfg.volume));
+        auto radio = std::make_unique<FmAudioDemod>(
+            FmAudioDemod::wfm(cfg.sample_rate, cfg.volume));
+        if (aout.init(static_cast<int>(tv->out_rate()))) {
+            fm = std::move(tv);
+            fm_radio = std::move(radio);
+        } else {
             std::fprintf(stderr, "audio device unavailable, continuing muted\n");
+        }
     }
 
     std::thread dsp(dsp_thread, std::cref(cfg), src.get(), &dec, &rec,
-                    fm.get(), aout.ok() ? &aout : nullptr);
+                    fm.get(), fm_radio.get(), aout.ok() ? &aout : nullptr);
 
     int rc = 0;
     if (cfg.headless) {
@@ -366,6 +377,7 @@ int main(int argc, char** argv) {
         uint64_t prev_frames = 0;
         auto last_frame_inc = std::chrono::steady_clock::now();
         bool show_help = false;
+        bool show_hud = true;
         bool crt_mode = false;
         float fps = 0.0f;
         uint64_t fps_base_frames = 0;
@@ -397,6 +409,14 @@ int main(int argc, char** argv) {
                 std::fflush(stdout);
             }
             if (act == KeyAction::ToggleCrt) crt_mode = !crt_mode;
+            if (act == KeyAction::ToggleHud) show_hud = !show_hud;
+            if (act == KeyAction::ToggleRadio && hackrf) {
+                bool r = !g_radio.load(std::memory_order_relaxed);
+                g_radio.store(r, std::memory_order_relaxed);
+                hackrf->set_center_freq(
+                    (r ? mcfg.fm_freq_hz : mcfg.video_carrier_hz) +
+                    mcfg.offset_hz);
+            }
             // Arrow-key tuning: left/right 50 kHz, up/down 1 MHz.
             double tune = 0.0;
             if (act == KeyAction::FreqUp) tune = 50e3;
@@ -404,11 +424,19 @@ int main(int argc, char** argv) {
             if (act == KeyAction::FreqUpBig) tune = 1e6;
             if (act == KeyAction::FreqDownBig) tune = -1e6;
             if (tune != 0.0 && hackrf) {
-                mcfg.video_carrier_hz += tune;
-                hackrf->set_center_freq(mcfg.center_hz());
-                if (std::abs(mcfg.video_carrier_hz - 91.25e6) < 3e6) channel = 1;
-                else if (std::abs(mcfg.video_carrier_hz - 97.25e6) < 3e6) channel = 2;
-                else channel = 0;
+                if (g_radio.load(std::memory_order_relaxed)) {
+                    // FM band: 100 kHz fine steps, 1 MHz coarse.
+                    mcfg.fm_freq_hz +=
+                        (std::abs(tune) == 50e3) ? (tune > 0 ? 1e5 : -1e5)
+                                                 : tune;
+                    hackrf->set_center_freq(mcfg.fm_freq_hz + mcfg.offset_hz);
+                } else {
+                    mcfg.video_carrier_hz += tune;
+                    hackrf->set_center_freq(mcfg.center_hz());
+                    if (std::abs(mcfg.video_carrier_hz - 91.25e6) < 3e6) channel = 1;
+                    else if (std::abs(mcfg.video_carrier_hz - 97.25e6) < 3e6) channel = 2;
+                    else channel = 0;
+                }
             }
             if (act == KeyAction::ToggleColor)
                 mcfg.mode = (mcfg.mode == Config::Mode::Color)
@@ -453,6 +481,7 @@ int main(int argc, char** argv) {
             st.crt = crt_mode;
             st.recording = rec.active();
             st.rec_seconds = rec.seconds();
+            st.show_hud = show_hud;
             // Video latency: decoder samples since the displayed frame's
             // vsync (same coordinate system, so input drops don't skew it),
             // plus the source's unread backlog and ~one USB transfer (13 ms).
@@ -467,7 +496,8 @@ int main(int argc, char** argv) {
                         13.0);
             }
             st.audio_latency_ms = aout.ok() ? aout.queued_ms() : 0.0f;
-            st.freq_mhz = cfg.video_carrier_hz / 1e6;
+            st.radio = g_radio.load(std::memory_order_relaxed);
+            st.freq_mhz = (st.radio ? cfg.fm_freq_hz : cfg.video_carrier_hz) / 1e6;
             st.audio_mhz = (cfg.video_carrier_hz + 4.5e6) / 1e6;
             st.channel = channel;
             disp.render(f, st);

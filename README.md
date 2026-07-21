@@ -94,6 +94,7 @@ platform-specific dependencies beyond libhackrf and SDL2.
 | `--detector envelope\|sync` | envelope / carrier-PLL synchronous detection |
 | `--sat F` / `--hue DEG` | saturation / hue trim |
 | `--overscan F` | horizontal crop per side, 0..0.15 (default 0.047 ~ the NES 256-px picture) |
+| `--fm-freq HZ` | FM radio station for the `f` key (default 80.0e6) |
 | `--no-audio` / `--volume F` | disable FM audio / volume 0..1 (default 0.7) |
 | `--record PATH` | tee raw IQ to .cs8 while decoding |
 | `--dump-frames PREFIX` / `--frames N` | headless PPM frame dump |
@@ -110,6 +111,11 @@ platform-specific dependencies beyond libhackrf and SDL2.
   Raw IQ at 10 MSPS is ~20 MB/s (~72 GB/hour) — record short clips
 - `←` / `→`: tune ±50 kHz, `↑` / `↓`: tune ±1 MHz (live retuning)
 - `r`: CRT emulation (barrel distortion + scanlines + vignette)
+- `o`: toggle the top-right HUD
+- `f`: broadcast FM radio mode — retunes to `--fm-freq` (default 80.0 MHz
+  TOKYO FM) and demodulates wideband FM (±75 kHz, 50 µs de-emphasis);
+  arrows tune in 100 kHz / 1 MHz steps; press `f` again to return to TV.
+  Reception depends on your antenna — the Famicom RF cable is a poor one
 - **Top left (big green)**: retro-TV style channel number (`CH1`)
 - **Top right (yellow)**: sync lock states and decoded FPS
   (`V-SYNC:OK H-SYNC:OK 60.0FPS`), video/audio carriers
